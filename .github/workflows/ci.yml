@@ -1,0 +1,48 @@
+name: CI
+on: [push]
+jobs:
+  build-linux:
+    strategy:
+      matrix:
+        java: [8,11]
+        os: [ubuntu-latest]
+        docker-version: [19.09]
+        docker-channel: [stable]
+    runs-on: ${{ matrix.os }}
+    name: java-${{ matrix.java }} on ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v1
+      - run: sudo apt-get update -yqq --fix-missing
+      - uses: docker-practice/actions-setup-docker@master
+        with:
+          docker_version: ${{ matrix.docker-version }}
+          docker_channel: ${{ matrix.docker-channel }}
+      - run: sudo apt-get install -yqq jq curl httpie
+      - uses: actions/cache@v1
+        with:
+          path: ~/.docker
+          key: ${{ runner.os }}-${{ matrix.os }}-docker-${{ hashFiles('**/Dockerfile*') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.os }}-docker-
+      - uses: actions/setup-java@v1
+        with:
+          java-version: ${{ matrix.java }}
+      - uses: actions/cache@v1
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - run: ./mvnw clean ; ./mvnw
+      - run: ./mvnw -f webapps-deploymen docker:build docker:start
+      - run: |
+          echo http
+          which http
+          http get :8080/webapp1/hello | jq '.'
+          http get :8080/webapp2/hello | jq '.'
+          echo curl
+          which curl
+          curl -sS 0:8080/webapp1/hello | jq '.'
+          curl -sS 0:8080/webapp2/hello | jq '.'
+          echo "done!"
+          ./mvnw -f webapps-deploymen docker:stop docker:remove
